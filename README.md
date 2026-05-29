@@ -208,3 +208,118 @@ By default, Spring Boot with Tomcat uses a pool of **200 concurrent threads**. B
 * Under heavy write loads, if the queue fills up, the `CallerRunsPolicy` will force the HTTP thread to process the projection, causing artificial backpressure to prevent out-of-memory errors.
 
 **Summary:** Out of the box, on standard cloud hardware, this single instance can comfortably handle **thousands of users reading data simultaneously**, while safely processing **hundreds of state-mutating transactions per second**. To handle more, you simply deploy more instances behind a Load Balancer.
+
+
+
+classDiagram
+direction TB
+
+    %% ================= API Layer =================
+    package "API Layer" {
+        class OrderCommandController {
+            -CommandBus commandBus
+            +createOrder(CreateOrderRequest)
+            +addOrderItem(UUID, AddOrderItemRequest)
+            +confirmOrder(UUID)
+            +cancelOrder(UUID, CancelOrderRequest)
+        }
+
+        class OrderQueryController {
+            -QueryBus queryBus
+            +getOrderById(UUID) OrderDetailResponse
+            +getOrdersByCustomer(String) List~OrderSummaryResponse~
+            +getOrdersByStatus(String) List~OrderSummaryResponse~
+            +getAllOrders(int, int) Page~OrderSummaryResponse~
+        }
+    }
+
+    %% ================= Command Side (Write) =================
+    package "Command Infrastructure (Write)" {
+        class CommandBus {
+            <<interface>>
+            +dispatch(Command) R
+        }
+        class CommandBusImpl {
+            -Map~Class, CommandHandler~ handlers
+            +dispatch(Command) R
+        }
+        class CommandHandler~C, R~ {
+            <<interface>>
+            +handle(C command) R
+        }
+    }
+    
+    OrderCommandController --> CommandBus : dispatches Command
+    CommandBusImpl ..|> CommandBus
+    CommandBusImpl o-- CommandHandler : routes to specific handler
+
+    class Order {
+        <<AggregateRoot>>
+        -String customerId
+        -OrderStatus status
+        +create(...) Order
+        +addItem(...)
+    }
+    CommandHandler --> Order : loads & manipulates
+
+    %% ================= Query Side (Read) =================
+    package "Query Infrastructure (Read)" {
+        class QueryBus {
+            <<interface>>
+            +dispatch(Query) R
+        }
+        class QueryBusImpl {
+            -Map~Class, QueryHandler~ handlers
+            +dispatch(Query) R
+        }
+        class QueryHandler~Q, R~ {
+            <<interface>>
+            +handle(Q query) R
+        }
+    }
+
+    OrderQueryController --> QueryBus : dispatches Query
+    QueryBusImpl ..|> QueryBus
+    QueryBusImpl o-- QueryHandler : routes to specific handler
+
+    %% ================= Event & Projection Bridge =================
+    class DomainEvent {
+        <<interface>>
+    }
+    Order ..> DomainEvent : generates (OrderCreatedEvent, etc.)
+
+    class OrderProjector {
+        -OrderSummaryReadRepository summaryRepo
+        -OrderDetailReadRepository detailRepo
+        +on(OrderCreatedEvent)
+        +on(OrderItemAddedEvent)
+    }
+    OrderProjector ..> DomainEvent : asynchronously listens to
+
+    %% ================= Read Repositories & DTOs =================
+    package "Read Models (Projections)" {
+        class OrderSummaryReadRepository {
+            <<interface>>
+            +findByCustomerId(String)
+            +findByStatus(String)
+        }
+        class OrderDetailReadRepository {
+            <<interface>>
+            +findById(UUID)
+        }
+        class OrderDetailResponse {
+            <<DTO>>
+        }
+        class OrderSummaryResponse {
+            <<DTO>>
+        }
+    }
+
+    OrderProjector --> OrderSummaryReadRepository : saves denormalized data
+    OrderProjector --> OrderDetailReadRepository : saves denormalized data
+
+    QueryHandler --> OrderSummaryReadRepository : fetches data from
+    QueryHandler --> OrderDetailReadRepository : fetches data from
+    
+    QueryHandler ..> OrderDetailResponse : maps to & returns
+    QueryHandler ..> OrderSummaryResponse : maps to & returns
