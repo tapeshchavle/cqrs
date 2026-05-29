@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
+// Maintains all the the get Apis
 @RestController
 @RequestMapping("/api/orders")
 public class OrderQueryController {
