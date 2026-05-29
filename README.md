@@ -210,11 +210,11 @@ By default, Spring Boot with Tomcat uses a pool of **200 concurrent threads**. B
 **Summary:** Out of the box, on standard cloud hardware, this single instance can comfortably handle **thousands of users reading data simultaneously**, while safely processing **hundreds of state-mutating transactions per second**. To handle more, you simply deploy more instances behind a Load Balancer.
 
 
-
+```mermaid
 classDiagram
 direction TB
 
-    %% ================= API Layer =================
+   
     package "API Layer" {
         class OrderCommandController {
             -CommandBus commandBus
@@ -323,3 +323,5 @@ direction TB
     
     QueryHandler ..> OrderDetailResponse : maps to & returns
     QueryHandler ..> OrderSummaryResponse : maps to & returns
+
+```
