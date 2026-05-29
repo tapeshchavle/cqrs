@@ -210,118 +210,110 @@ By default, Spring Boot with Tomcat uses a pool of **200 concurrent threads**. B
 **Summary:** Out of the box, on standard cloud hardware, this single instance can comfortably handle **thousands of users reading data simultaneously**, while safely processing **hundreds of state-mutating transactions per second**. To handle more, you simply deploy more instances behind a Load Balancer.
 
 
+## CQRS Architecture Diagram
+
 ```mermaid
 classDiagram
-direction TB
+    direction TB
 
-   
-    package "API Layer" {
-        class OrderCommandController {
-            -CommandBus commandBus
-            +createOrder(CreateOrderRequest)
-            +addOrderItem(UUID, AddOrderItemRequest)
-            +confirmOrder(UUID)
-            +cancelOrder(UUID, CancelOrderRequest)
-        }
-
-        class OrderQueryController {
-            -QueryBus queryBus
-            +getOrderById(UUID) OrderDetailResponse
-            +getOrdersByCustomer(String) List~OrderSummaryResponse~
-            +getOrdersByStatus(String) List~OrderSummaryResponse~
-            +getAllOrders(int, int) Page~OrderSummaryResponse~
-        }
+    class OrderCommandController {
+        +createOrder(CreateOrderRequest)
+        +addOrderItem(UUID, AddOrderItemRequest)
+        +confirmOrder(UUID)
+        +cancelOrder(UUID, CancelOrderRequest)
     }
 
-    %% ================= Command Side (Write) =================
-    package "Command Infrastructure (Write)" {
-        class CommandBus {
-            <<interface>>
-            +dispatch(Command) R
-        }
-        class CommandBusImpl {
-            -Map~Class, CommandHandler~ handlers
-            +dispatch(Command) R
-        }
-        class CommandHandler~C, R~ {
-            <<interface>>
-            +handle(C command) R
-        }
+    class OrderQueryController {
+        +getOrderById(UUID)
+        +getOrdersByCustomer(String)
+        +getOrdersByStatus(String)
+        +getAllOrders(int, int)
     }
-    
-    OrderCommandController --> CommandBus : dispatches Command
-    CommandBusImpl ..|> CommandBus
-    CommandBusImpl o-- CommandHandler : routes to specific handler
+
+    class CommandBus {
+        <<interface>>
+        +dispatch(Command)
+    }
+
+    class CommandBusImpl {
+        +dispatch(Command)
+    }
+
+    class CommandHandler {
+        <<interface>>
+        +handle(Command)
+    }
+
+    class QueryBus {
+        <<interface>>
+        +dispatch(Query)
+    }
+
+    class QueryBusImpl {
+        +dispatch(Query)
+    }
+
+    class QueryHandler {
+        <<interface>>
+        +handle(Query)
+    }
 
     class Order {
         <<AggregateRoot>>
-        -String customerId
-        -OrderStatus status
-        +create(...) Order
-        +addItem(...)
-    }
-    CommandHandler --> Order : loads & manipulates
-
-    %% ================= Query Side (Read) =================
-    package "Query Infrastructure (Read)" {
-        class QueryBus {
-            <<interface>>
-            +dispatch(Query) R
-        }
-        class QueryBusImpl {
-            -Map~Class, QueryHandler~ handlers
-            +dispatch(Query) R
-        }
-        class QueryHandler~Q, R~ {
-            <<interface>>
-            +handle(Q query) R
-        }
+        -customerId : String
+        -status : OrderStatus
+        +create()
+        +addItem()
     }
 
-    OrderQueryController --> QueryBus : dispatches Query
-    QueryBusImpl ..|> QueryBus
-    QueryBusImpl o-- QueryHandler : routes to specific handler
-
-    %% ================= Event & Projection Bridge =================
     class DomainEvent {
         <<interface>>
     }
-    Order ..> DomainEvent : generates (OrderCreatedEvent, etc.)
 
     class OrderProjector {
-        -OrderSummaryReadRepository summaryRepo
-        -OrderDetailReadRepository detailRepo
         +on(OrderCreatedEvent)
         +on(OrderItemAddedEvent)
     }
-    OrderProjector ..> DomainEvent : asynchronously listens to
 
-    %% ================= Read Repositories & DTOs =================
-    package "Read Models (Projections)" {
-        class OrderSummaryReadRepository {
-            <<interface>>
-            +findByCustomerId(String)
-            +findByStatus(String)
-        }
-        class OrderDetailReadRepository {
-            <<interface>>
-            +findById(UUID)
-        }
-        class OrderDetailResponse {
-            <<DTO>>
-        }
-        class OrderSummaryResponse {
-            <<DTO>>
-        }
+    class OrderSummaryReadRepository {
+        <<interface>>
+        +findByCustomerId(String)
+        +findByStatus(String)
     }
 
-    OrderProjector --> OrderSummaryReadRepository : saves denormalized data
-    OrderProjector --> OrderDetailReadRepository : saves denormalized data
+    class OrderDetailReadRepository {
+        <<interface>>
+        +findById(UUID)
+    }
 
-    QueryHandler --> OrderSummaryReadRepository : fetches data from
-    QueryHandler --> OrderDetailReadRepository : fetches data from
-    
-    QueryHandler ..> OrderDetailResponse : maps to & returns
-    QueryHandler ..> OrderSummaryResponse : maps to & returns
+    class OrderDetailResponse {
+        <<DTO>>
+    }
 
+    class OrderSummaryResponse {
+        <<DTO>>
+    }
+
+    OrderCommandController --> CommandBus : dispatches
+    CommandBusImpl ..|> CommandBus
+    CommandBusImpl o-- CommandHandler : routes to
+
+    CommandHandler --> Order : loads/manipulates
+
+    OrderQueryController --> QueryBus : dispatches
+    QueryBusImpl ..|> QueryBus
+    QueryBusImpl o-- QueryHandler : routes to
+
+    Order ..> DomainEvent : publishes
+
+    OrderProjector ..> DomainEvent : listens
+
+    OrderProjector --> OrderSummaryReadRepository : updates
+    OrderProjector --> OrderDetailReadRepository : updates
+
+    QueryHandler --> OrderSummaryReadRepository : reads
+    QueryHandler --> OrderDetailReadRepository : reads
+
+    QueryHandler ..> OrderDetailResponse : maps
+    QueryHandler ..> OrderSummaryResponse : maps
 ```
